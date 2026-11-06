@@ -1,0 +1,47 @@
+:root {
+  --bg: #0d0d12; --panel: #15151d; --line: #262633; --text: #e6e4ee; --muted: #8b889c;
+  --accent: #9c8cff; --ok: #5fcf9a; --bad: #ff7a85; --warn: #f2c063; --info: #6fb3ff;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
+header { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--line); gap: 12px; flex-wrap: wrap; }
+.brand { font-weight: 650; font-size: 18px; letter-spacing: .02em; display: flex; align-items: center; gap: 10px; }
+.brand small { color: var(--muted); font-weight: 400; }
+.moon { width: 16px; height: 16px; border-radius: 50%; box-shadow: inset -5px -2px 0 0 var(--accent); }
+.health { font-size: 13px; color: var(--muted); }
+.health b { color: var(--text); font-weight: 600; }
+main { display: grid; grid-template-columns: 300px 1fr 1.2fr; gap: 16px; padding: 16px 20px; align-items: start; }
+@media (max-width: 1100px) { main { grid-template-columns: 1fr 1fr; } .detail { grid-column: 1 / -1; } }
+@media (max-width: 700px) { main { grid-template-columns: 1fr; padding: 16px; } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 12px; }
+h3 { margin: 0 0 4px; font-size: 20px; }
+label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+input, textarea { display: block; width: 100%; margin-top: 4px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px; font: inherit; }
+input:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+button { background: var(--accent); color: #111; border: 0; border-radius: 6px; padding: 8px 14px; font: inherit; font-weight: 600; cursor: pointer; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+button.ok { background: var(--ok); } button.bad { background: var(--bad); }
+.queue-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+#filters { display: flex; flex-wrap: wrap; gap: 4px; }
+#filters button { background: transparent; color: var(--muted); border: 1px solid var(--line); padding: 3px 9px; font-size: 12px; font-weight: 500; }
+#filters button.on { color: var(--text); border-color: var(--accent); }
+.list { list-style: none; margin: 0; padding: 0; }
+.list li { padding: 10px; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; border: 1px solid transparent; }
+.list li:hover { background: #1b1b25; } .list li.sel { border-color: var(--accent); }
+.list .t { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list .l { color: var(--muted); font-size: 12px; }
+.badge { font-size: 11px; padding: 2px 8px; border-radius: 99px; border: 1px solid currentColor; white-space: nowrap; align-self: center; }
+.s-draft { color: var(--muted); } .s-generating { color: var(--info); } .s-review { color: var(--warn); }
+.s-approved { color: var(--ok); } .s-rejected, .s-failed { color: var(--bad); }
+.muted { color: var(--muted); } .err { color: var(--bad); font-size: 13px; min-height: 1em; margin: 8px 0 0; }
+.meta { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+pre { white-space: pre-wrap; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px; font-size: 13px; margin: 4px 0 14px; }
+.notes { color: var(--warn); font-size: 13px; margin: 0 0 14px; padding-left: 18px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 16px; }
+audio { width: 100%; margin-bottom: 14px; }
+.history { list-style: none; padding: 0; margin: 0; font-size: 13px; border-left: 2px solid var(--line); }
+.history li { padding: 4px 0 8px 12px; } .history time { color: var(--muted); font-size: 12px; display: block; }

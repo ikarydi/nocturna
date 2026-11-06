@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: nocturna
+      POSTGRES_PASSWORD: nocturna
+      POSTGRES_DB: nocturna
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nocturna -d nocturna"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://nocturna:nocturna@db:5432/nocturna
+      AUDIO_DIR: /app/data/audio
+      ACE_STEP_ENABLED: "false"
+      # When a GPU adapter runs on the Windows/WSL host, point at it here.
+      ACE_STEP_URL: http://host.docker.internal:8001
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./data/audio:/app/data/audio
+
+volumes:
+  pgdata:

@@ -1,0 +1,26 @@
+from functools import lru_cache
+from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Runtime settings, read from environment variables or a local .env file."""
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    database_url: str = "sqlite:///./data/nocturna.db"
+    audio_dir: Path = Path("./data/audio")
+
+    # Generation stays off until a GPU-backed service is deployed and health-checked.
+    ace_step_enabled: bool = False
+    ace_step_url: str = "http://127.0.0.1:8001"
+    ace_step_timeout_s: float = 600.0
+
+    # Apply Alembic migrations on startup, so a fresh clone needs no manual step.
+    auto_migrate: bool = True
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nocturna release desk</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header>
+  <div class="brand"><span class="moon" aria-hidden="true"></span>Nocturna <small>release desk</small></div>
+  <div id="health" class="health">checking…</div>
+</header>
+<main>
+  <section class="panel" aria-labelledby="new-h">
+    <h2 id="new-h">New concept</h2>
+    <form id="create">
+      <label>Title<input name="title" required maxlength="200" placeholder="Ashes Over Vesper"></label>
+      <label>Lane<input name="lane" maxlength="100" placeholder="dark ambient, slow organ drones"></label>
+      <label>Brief<textarea name="brief" rows="3" maxlength="2000" placeholder="cold reverb, distant bells, low strings"></textarea></label>
+      <div class="row">
+        <label>BPM<input name="bpm" type="number" min="40" max="200" placeholder="70"></label>
+        <label>Key<input name="musical_key" maxlength="20" placeholder="D minor"></label>
+        <label>Seconds<input name="duration_s" type="number" min="15" max="900" value="180"></label>
+      </div>
+      <button type="submit">Create draft</button>
+      <p id="create-err" class="err" role="alert"></p>
+    </form>
+  </section>
+
+  <section class="panel queue" aria-labelledby="queue-h">
+    <div class="queue-head">
+      <h2 id="queue-h">Queue</h2>
+      <nav id="filters" aria-label="Filter by status">
+        <button data-status="" class="on">All</button>
+        <button data-status="draft">Draft</button>
+        <button data-status="review">Review</button>
+        <button data-status="approved">Approved</button>
+        <button data-status="rejected">Rejected</button>
+        <button data-status="failed">Failed</button>
+      </nav>
+    </div>
+    <ul id="list" class="list"></ul>
+    <p id="empty" class="muted" hidden>Nothing here yet.</p>
+  </section>
+
+  <section class="panel detail" id="detail" aria-live="polite">
+    <p class="muted">Select a release to review it.</p>
+  </section>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>
