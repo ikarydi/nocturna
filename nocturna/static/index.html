@@ -9,24 +9,50 @@
 <body>
 <header>
   <div class="brand"><span class="moon" aria-hidden="true"></span>Nocturna <small>release desk</small></div>
-  <div id="health" class="health">checking…</div>
+  <div class="head-right">
+    <label class="reviewer">Reviewer <input id="actor" maxlength="100" placeholder="your name"></label>
+    <div id="health" class="health">checking…</div>
+  </div>
 </header>
 <main>
-  <section class="panel" aria-labelledby="new-h">
-    <h2 id="new-h">New concept</h2>
-    <form id="create">
-      <label>Title<input name="title" required maxlength="200" placeholder="Ashes Over Vesper"></label>
-      <label>Lane<input name="lane" maxlength="100" placeholder="dark ambient, slow organ drones"></label>
-      <label>Brief<textarea name="brief" rows="3" maxlength="2000" placeholder="cold reverb, distant bells, low strings"></textarea></label>
-      <div class="row">
-        <label>BPM<input name="bpm" type="number" min="40" max="200" placeholder="70"></label>
-        <label>Key<input name="musical_key" maxlength="20" placeholder="D minor"></label>
-        <label>Seconds<input name="duration_s" type="number" min="15" max="900" value="180"></label>
-      </div>
-      <button type="submit">Create draft</button>
-      <p id="create-err" class="err" role="alert"></p>
-    </form>
-  </section>
+  <div class="col">
+    <section class="panel" aria-labelledby="new-h">
+      <h2 id="new-h">New concept</h2>
+      <form id="create">
+        <label>Title<input name="title" required maxlength="200" placeholder="Ashes Over Vesper"></label>
+        <label>Lane template<select name="template_id" id="template-select"><option value="">None</option></select></label>
+        <label>Lane<input name="lane" maxlength="100" placeholder="dark ambient (or from template)"></label>
+        <label>Brief<textarea name="brief" rows="3" maxlength="2000" placeholder="cold reverb, distant bells, low strings"></textarea></label>
+        <div class="row">
+          <label>BPM<input name="bpm" type="number" min="40" max="200" placeholder="70"></label>
+          <label>Key<input name="musical_key" maxlength="20" placeholder="D minor"></label>
+          <label>Seconds<input name="duration_s" type="number" min="15" max="900" value="180"></label>
+        </div>
+        <label>Seed (optional, for reproducible generation)<input name="seed" type="number" min="0"></label>
+        <button type="submit">Create draft</button>
+        <p id="create-err" class="err" role="alert"></p>
+      </form>
+    </section>
+    <section class="panel" aria-labelledby="tpl-h">
+      <h2 id="tpl-h">Lane templates</h2>
+      <ul id="templates" class="tpl-list"></ul>
+      <details>
+        <summary>Add a template</summary>
+        <form id="tpl-create">
+          <label>Name<input name="name" required maxlength="100" placeholder="Cathedral drone"></label>
+          <label>Tags (comma separated)<input name="tags" maxlength="600" placeholder="pipe organ, long reverb, slow swells"></label>
+          <label>Description<textarea name="description" rows="2" maxlength="2000"></textarea></label>
+          <div class="row">
+            <label>BPM min<input name="bpm_min" type="number" min="40" max="200"></label>
+            <label>BPM max<input name="bpm_max" type="number" min="40" max="200"></label>
+            <label>Key<input name="default_key" maxlength="20"></label>
+          </div>
+          <button type="submit">Save template</button>
+          <p id="tpl-err" class="err" role="alert"></p>
+        </form>
+      </details>
+    </section>
+  </div>
 
   <section class="panel queue" aria-labelledby="queue-h">
     <div class="queue-head">

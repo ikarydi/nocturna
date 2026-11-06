@@ -26,7 +26,7 @@ def test_vocal_terms_are_stripped():
 
 
 def test_long_prompt_is_truncated():
-    r = build_prompt(brief=", ".join(["shimmering texture"] * 80))
+    r = build_prompt(brief=", ".join(f"shimmering texture {i}" for i in range(80)))
     assert len(r.prompt) <= MAX_PROMPT_CHARS
     assert any("truncated" in w for w in r.warnings)
 
@@ -35,3 +35,15 @@ def test_long_prompt_is_truncated():
 def test_out_of_range_values_raise(kwargs):
     with pytest.raises(ValueError):
         build_prompt(brief="x", **kwargs)
+
+
+def test_template_tags_merge_and_dedupe():
+    r = build_prompt(template_tags="dark ambient, organ drones", lane="dark ambient", brief="bells")
+    assert r.prompt.lower().count("dark ambient") == 1
+    assert r.prompt.startswith("dark ambient, organ drones, bells")
+
+
+def test_bpm_outside_template_range_warns():
+    r = build_prompt(brief="x", bpm=120, bpm_range=(50, 80))
+    assert any("outside the lane" in w for w in r.warnings)
+    assert build_prompt(brief="x", bpm=60, bpm_range=(50, 80)).warnings == []
