@@ -3,6 +3,7 @@ let filter = "";
 let selected = null;
 let templates = [];
 let checklistItems = {};
+let generationOn = false;
 
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt = (v, d = 1) => (v === null || v === undefined ? "–" : Number(v).toFixed(d));
@@ -34,6 +35,7 @@ function formJson(form, numeric = []) {
 async function loadHealth() {
   try {
     const h = await api("/health");
+    generationOn = h.generation_enabled;
     $("#health").innerHTML = `db <b>${esc(h.database)}</b> · generation <b>${h.generation_enabled ? esc(h.generator.status) : "off"}</b> · ffmpeg <b>${h.ffmpeg ? "ok" : "missing"}</b> · v${esc(h.version)}`;
   } catch { $("#health").textContent = "API unreachable"; }
 }
@@ -160,7 +162,11 @@ function render(r) {
     try { render(await fn()); await loadList(); } catch (e) { $(errSel).textContent = e.message; }
   };
   const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body ?? {}) });
-  $("#run").onclick = () => act(() => post(`/api/releases/${r.id}/run`));
+  $("#run").onclick = (e) => {
+    e.target.disabled = true;
+    e.target.textContent = generationOn ? "Generating… (minutes on CPU)" : "Running…";
+    act(() => post(`/api/releases/${r.id}/run`));
+  };
   for (const action of ["approve", "reject", "reopen"]) {
     $(`#${action}`).onclick = () => act(() => post(`/api/releases/${r.id}/decision`, { action, note: $("#note").value, actor: actor() }));
   }

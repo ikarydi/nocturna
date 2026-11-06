@@ -14,8 +14,10 @@ class Settings(BaseSettings):
 
     # Generation stays off until a GPU-backed service is deployed and health-checked.
     ace_step_enabled: bool = False
-    ace_step_url: str = "http://127.0.0.1:8001"
-    ace_step_timeout_s: float = 600.0
+    # URL of the Nocturna generation adapter (nocturna.adapter), not ACE-Step itself.
+    ace_step_url: str = "http://127.0.0.1:8002"
+    # CPU generation can take many minutes per clip.
+    ace_step_timeout_s: float = 3600.0
 
     # Delivery export targets (YouTube normalizes playback to about -14 LUFS).
     delivery_lufs: float = -14.0
