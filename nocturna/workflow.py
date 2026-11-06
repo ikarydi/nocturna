@@ -18,6 +18,9 @@ class WorkflowState(TypedDict, total=False):
     bpm: int | None
     musical_key: str | None
     duration_s: int
+    template_tags: str
+    bpm_range: tuple[int | None, int | None]
+    seed: int | None
     generation_enabled: bool
     prompt: str
     warnings: list[str]
@@ -37,6 +40,8 @@ def build_workflow(generator: Generator):
                 bpm=state.get("bpm"),
                 musical_key=state.get("musical_key"),
                 duration_s=state.get("duration_s", 180),
+                template_tags=state.get("template_tags", ""),
+                bpm_range=state.get("bpm_range", (None, None)),
             )
         except ValueError as exc:
             return {"error": str(exc), "warnings": []}
@@ -44,7 +49,9 @@ def build_workflow(generator: Generator):
 
     def generate(state: WorkflowState) -> WorkflowState:
         try:
-            result = generator.generate(state["prompt"], state.get("duration_s", 180))
+            result = generator.generate(
+                state["prompt"], state.get("duration_s", 180), state.get("seed")
+            )
         except GenerationDisabled:
             return {"warnings": [*state.get("warnings", []), "generation skipped: disabled"]}
         except GeneratorError as exc:

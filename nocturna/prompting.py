@@ -39,10 +39,12 @@ def build_prompt(
     bpm: int | None = None,
     musical_key: str | None = None,
     duration_s: int = 180,
+    template_tags: str = "",
+    bpm_range: tuple[int | None, int | None] = (None, None),
 ) -> PromptResult:
     warnings: list[str] = []
 
-    text = f"{lane}, {brief}" if lane else brief
+    text = ", ".join(t for t in (template_tags, lane, brief) if t and t.strip())
     for match in _IMITATION.finditer(text):
         warnings.append(f"removed artist/track imitation: {match.group(0).strip()!r}")
     text = _IMITATION.sub("", text)
@@ -55,12 +57,23 @@ def build_prompt(
         warnings.append("removed vocal phrases: Nocturna releases are instrumental only")
         text = ", ".join(kept)
 
-    parts = [_clean(text)] if _clean(text) else []
+    # De-duplicate phrases (template tags often overlap the brief), keeping order.
+    seen: set[str] = set()
+    phrases = []
+    for phrase in (_clean(p) for p in text.split(",")):
+        if phrase and phrase.lower() not in seen:
+            seen.add(phrase.lower())
+            phrases.append(phrase)
+    text = ", ".join(phrases)
+    parts = [text] if text else []
     parts.extend(t for t in BASE_TAGS if t not in text.lower())
     if bpm is not None:
         if not 40 <= bpm <= 200:
             raise ValueError("bpm must be between 40 and 200")
         parts.append(f"{bpm} bpm")
+        low, high = bpm_range
+        if (low is not None and bpm < low) or (high is not None and bpm > high):
+            warnings.append(f"bpm {bpm} is outside the lane's range {low}-{high}")
     if musical_key:
         parts.append(f"key of {musical_key.strip()}")
     if not 15 <= duration_s <= 900:

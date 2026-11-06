@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     ace_step_url: str = "http://127.0.0.1:8001"
     ace_step_timeout_s: float = 600.0
 
+    # Delivery export targets (YouTube normalizes playback to about -14 LUFS).
+    delivery_lufs: float = -14.0
+    delivery_true_peak_dbtp: float = -1.0
+    max_upload_mb: int = 1024
+
     # Apply Alembic migrations on startup, so a fresh clone needs no manual step.
     auto_migrate: bool = True
 
