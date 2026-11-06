@@ -75,7 +75,18 @@ class HttpGenerator:
             data = response.json()
         except (httpx.HTTPError, ValueError) as exc:
             return {"status": "unreachable", "error": str(exc)}
-        return data if isinstance(data, dict) else {"status": "invalid"}
+        if not isinstance(data, dict):
+            return {"status": "invalid", "error": "health response is not a JSON object"}
+        if "status" not in data and {"data", "code"} <= data.keys():
+            # ACE-Step wraps every response as {"data", "code", ...}: the URL skips the adapter.
+            return {
+                "status": "wrong port",
+                "error": f"ACE_STEP_URL ({self.base_url}) points at ACE-Step itself; "
+                         "set it to the Nocturna adapter, usually http://127.0.0.1:8002",
+            }
+        if "status" not in data:
+            return {"status": "invalid", "error": "health response has no status"}
+        return data
 
     def generate(self, prompt: str, duration_s: int, seed: int | None = None) -> GenerationResult:
         try:

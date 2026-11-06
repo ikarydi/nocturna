@@ -36,7 +36,11 @@ async function loadHealth() {
   try {
     const h = await api("/health");
     generationOn = h.generation_enabled;
-    $("#health").innerHTML = `db <b>${esc(h.database)}</b> · generation <b>${h.generation_enabled ? esc(h.generator.status) : "off"}</b> · ffmpeg <b>${h.ffmpeg ? "ok" : "missing"}</b> · v${esc(h.version)}`;
+    $("#health").innerHTML = `db <b>${esc(h.database)}</b> · generation <b title="${esc(h.generator?.error || "")}">${h.generation_enabled ? esc(h.generator?.status || "unknown") : "off"}</b> · ffmpeg <b>${h.ffmpeg ? "ok" : "missing"}</b> · v${esc(h.version)}`;
+    if (h.generation_enabled && h.generator?.status !== "ok") {
+      $("#health").insertAdjacentHTML("beforeend",
+        `<div class="err">${esc(h.generator?.error || "generator is not ready")}</div>`);
+    }
   } catch { $("#health").textContent = "API unreachable"; }
 }
 

@@ -69,3 +69,17 @@ def test_http_generator_health_unreachable():
         raise httpx.ConnectError("refused")
 
     assert HttpGenerator("http://gen", client=_client(handler)).health()["status"] == "unreachable"
+
+
+@pytest.mark.parametrize(
+    "payload,status",
+    [
+        ({"data": {"status": "ok"}, "code": 200, "error": None}, "wrong port"),
+        ({"hello": "world"}, "invalid"),
+        (["ok"], "invalid"),
+    ],
+)
+def test_http_generator_health_misconfigured(payload, status):
+    gen = HttpGenerator("http://gen", client=_client(lambda r: httpx.Response(200, json=payload)))
+    h = gen.health()
+    assert h["status"] == status and h["error"]
