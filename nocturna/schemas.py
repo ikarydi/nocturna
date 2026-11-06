@@ -47,7 +47,7 @@ class ReleaseCreate(BaseModel):
     musical_key: str | None = Field(default=None, max_length=20)
     duration_s: int = Field(default=180, ge=15, le=900)
     template_id: int | None = None
-    seed: int | None = Field(default=None, ge=0, le=2**63 - 1)
+    seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
 
 
 class ReleaseUpdate(BaseModel):
@@ -58,7 +58,7 @@ class ReleaseUpdate(BaseModel):
     musical_key: str | None = Field(default=None, max_length=20)
     duration_s: int | None = Field(default=None, ge=15, le=900)
     template_id: int | None = None
-    seed: int | None = Field(default=None, ge=0, le=2**63 - 1)
+    seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
     # Metadata fields: also editable during review.
     title: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=5000)

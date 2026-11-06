@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nocturna"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local, approval-first release desk for a dark instrumental music label"
 requires-python = ">=3.11"
 dependencies = [
@@ -31,3 +31,7 @@ nocturna = ["static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = [
+  # Tests drive real httpx clients through Starlette's TestClient, which warns on per-request timeouts.
+  "ignore:You should not use the 'timeout' argument with the TestClient",
+]

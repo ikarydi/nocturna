@@ -8,6 +8,9 @@ model weights and never publishes anywhere. Every release stops at a human decis
 - **Stage 2:** lane templates, provenance for every file, audio QC, lossless master and
   loudness-normalized delivery export, metadata, a release checklist that gates approval,
   reviewer comments, and a downloadable delivery package.
+- **Stage 3:** optional music generation through ACE-Step 1.5, via a small adapter service,
+  with a fake generator for trying the flow without a model. See
+  [docs/generation.md](docs/generation.md).
 
 ## Quick start (WSL2 Ubuntu)
 
@@ -99,7 +102,8 @@ Interactive docs at http://localhost:8000/docs.
 
 ### Generation adapter contract (Stage 3)
 
-Nocturna does not call ACE-Step directly. Deploy a small adapter next to the GPU that offers:
+Nocturna does not call ACE-Step directly. The bundled adapter (`nocturna/adapter/`, setup in
+[docs/generation.md](docs/generation.md)) offers:
 
 ```
 GET  /health    -> {"status": "ok", "model": "...", "model_revision": "..."}
@@ -109,8 +113,8 @@ POST /generate  {"prompt": str, "duration_s": int, "seed": int|null}
 ```
 
 ACE-Step 1.5's own REST server (`acestep-api`, port 8001) is asynchronous (submit, then
-poll), so the adapter's job is to submit, wait, write the file into the shared audio
-folder, and return its path. Set `ACE_STEP_ENABLED=true` only after `/health` returns ok.
+poll), so the adapter submits, waits, writes the file into the shared audio folder, and
+returns its path. Set `ACE_STEP_ENABLED=true` only after `/health` returns ok.
 
 ## Configuration
 
@@ -129,8 +133,9 @@ Migrations: `alembic upgrade head` / `alembic revision --autogenerate -m "..."`.
 pytest
 ```
 
-49 tests cover prompt constraints and templates, every transition and the approval gate,
+58 tests cover prompt constraints and templates, every transition and the approval gate,
 persistence across restart, generator parsing and errors, provenance on generated and
 uploaded files, ffmpeg loudness parsing, real master/delivery exports (delivery lands within
-0.5 LU of target), artwork checks, and the contents of the delivery package. ffmpeg tests
+0.5 LU of target), artwork checks, the contents of the delivery package, and the generation adapter against a fake ACE-Step
+server (Nocturna → adapter → fake ACE-Step, end to end). ffmpeg tests
 skip automatically if ffmpeg is missing.
