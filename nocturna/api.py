@@ -1,36 +1,48 @@
 import json
 import random
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import __version__, assets, audio, migrate
+from . import __version__, assets, audio, card, covers, human, migrate, publishing, youtube
 from .config import Settings, get_settings
 from .db import make_engine, make_session_factory, session_scope
+from .freesound import Freesound, FreesoundError
 from .generator import Generator, build_generator
-from .models import CHECKLIST_ITEMS, Asset, PromptTemplate, Release, ReleaseEvent, ReleaseStatus
+from .models import (
+    CHECKLIST_ITEMS,
+    Asset,
+    PromptTemplate,
+    Release,
+    ReleaseEvent,
+    ReleaseStatus,
+    YouTubeUpload,
+)
 from .schemas import (
     METADATA_FIELDS,
     AssetOut,
     ChecklistUpdate,
     Comment,
     Decision,
+    FreesoundImport,
     ReleaseCreate,
     ReleaseDetail,
     ReleaseOut,
     ReleaseUpdate,
+    ScheduleRequest,
     TemplateCreate,
     TemplateOut,
     TemplateUpdate,
+    UploadOut,
 )
 from .transitions import TransitionError, approval_blockers, transition
 from .workflow import build_workflow
@@ -39,12 +51,18 @@ STATIC_DIR = Path(__file__).parent / "static"
 EDITABLE = {ReleaseStatus.draft, ReleaseStatus.rejected, ReleaseStatus.failed}
 REVIEWABLE = EDITABLE | {ReleaseStatus.review}
 AI_DISCLOSURE = (
-    "This track was created with the help of generative AI and curated, edited and approved "
-    "by a human. Set YouTube Studio > Altered or synthetic content to 'Yes' on upload."
+    "This track was created with the help of generative AI, layered with real human-made "
+    "recordings, and curated, edited and approved by a human. YouTube uploads always set "
+    "'Altered or synthetic content' to Yes."
 )
 
 
-def create_app(settings: Settings | None = None, generator: Generator | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    generator: Generator | None = None,
+    uploader_factory: Callable[[], youtube.Uploader] | None = None,
+    freesound_client: Freesound | None = None,
+) -> FastAPI:
     settings = settings or get_settings()
     engine = make_engine(settings.database_url)
     factory = make_session_factory(engine)
@@ -53,6 +71,23 @@ def create_app(settings: Settings | None = None, generator: Generator | None = N
     )
     workflow = build_workflow(generator)
     media_root = settings.audio_dir.resolve()
+    make_uploader = uploader_factory or (lambda: youtube.GoogleUploader(settings.youtube_token_path))
+
+    def get_freesound() -> Freesound:
+        if freesound_client is not None:
+            return freesound_client
+        try:
+            return Freesound(settings.freesound_api_key)
+        except FreesoundError as exc:
+            raise HTTPException(503, str(exc)) from exc
+
+    def run_uploads(upload_ids: list[int]) -> None:
+        """Background task: render and upload, each in its own session."""
+        for upload_id in upload_ids:
+            for db in session_scope(factory):
+                upload = db.get(YouTubeUpload, upload_id)
+                if upload is not None and upload.status == "queued":
+                    publishing.process(db, upload, media_root, make_uploader)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -81,6 +116,7 @@ def create_app(settings: Settings | None = None, generator: Generator | None = N
             out.approval_blockers = (
                 approval_blockers(release) if release.status == ReleaseStatus.review else []
             )
+            out.human_credits = human.credits(release.assets)
         return out
 
     def load(db: Session, release_id: int) -> Release:
@@ -110,6 +146,15 @@ def create_app(settings: Settings | None = None, generator: Generator | None = N
             "generation_enabled": settings.ace_step_enabled,
             "generator": gen,
             "ffmpeg": audio.ffmpeg_version(),
+            "freesound_enabled": bool(settings.freesound_api_key) or freesound_client is not None,
+            "youtube": {
+                "enabled": settings.youtube_enabled,
+                "auto_schedule": settings.youtube_auto_schedule,
+                "authorized": settings.youtube_token_path.is_file() or uploader_factory is not None,
+                "long_slots": settings.youtube_long_slots,
+                "short_slots": settings.youtube_short_slots,
+                "timezone": settings.youtube_timezone,
+            },
             "delivery_target": {
                 "lufs": settings.delivery_lufs, "true_peak_dbtp": settings.delivery_true_peak_dbtp
             },
@@ -118,6 +163,10 @@ def create_app(settings: Settings | None = None, generator: Generator | None = N
     @app.get("/api/checklist")
     def checklist_items():
         return CHECKLIST_ITEMS
+
+    @app.get("/api/human/sources")
+    def human_sources():
+        return human.SOURCE_TYPES
 
     # ------------------------------------------------------------- templates
 
@@ -254,13 +303,25 @@ def create_app(settings: Settings | None = None, generator: Generator | None = N
         return to_out(release, ReleaseDetail)
 
     @app.post("/api/releases/{release_id}/decision", response_model=ReleaseDetail)
-    def decide(release_id: int, body: Decision, db: Session = Depends(get_db)):
+    def decide(release_id: int, body: Decision, background: BackgroundTasks,
+               db: Session = Depends(get_db)):
         release = load(db, release_id)
         try:
             transition(db, release, body.action, note=body.note, actor=body.actor)
         except TransitionError as exc:
             db.rollback()
             raise HTTPException(409, str(exc)) from exc
+        if body.action == "approve" and settings.youtube_enabled and settings.youtube_auto_schedule:
+            try:
+                booked = publishing.schedule(db, release, settings, actor=body.actor)
+            except publishing.PublishError as exc:
+                status = release.status.value
+                release.events.append(ReleaseEvent(
+                    action="youtube_schedule", from_status=status, to_status=status,
+                    actor=body.actor, note=f"not scheduled: {exc}"))
+            else:
+                db.flush()
+                background.add_task(run_uploads, [u.id for u in booked])
         db.commit()
         return to_out(release, ReleaseDetail)
 
@@ -306,22 +367,35 @@ def create_app(settings: Settings | None = None, generator: Generator | None = N
         seed: str = Form(""),
         notes: str = Form(""),
         actor: str = Form(""),
+        source_type: str = Form(""),
+        author: str = Form(""),
+        source_url: str = Form(""),
+        sound_title: str = Form(""),
         db: Session = Depends(get_db),
     ):
         release = load(db, release_id)
         if release.status not in REVIEWABLE:
             raise HTTPException(409, f"cannot add files in status {release.status.value!r}")
-        provenance = {
-            "source": "uploaded",
-            "uploaded_by": actor or None,
-            "uploaded_at": datetime.now(UTC).isoformat(),
-            "model": model or None,
-            "model_revision": model_revision or None,
-            "license": license or None,
-            "seed": int(seed) if seed.strip().isdigit() else None,
-            "prompt": release.prompt,
-            "notes": notes or None,
-        }
+        if kind == "human":
+            try:
+                source = human.check(source_type, license, author or actor, sound_title,
+                                     source_url, notes)
+            except human.LicenceError as exc:
+                raise HTTPException(422, str(exc)) from exc
+            provenance = {**source.as_provenance(), "uploaded_by": actor or None,
+                          "uploaded_at": datetime.now(UTC).isoformat()}
+        else:
+            provenance = {
+                "source": "uploaded",
+                "uploaded_by": actor or None,
+                "uploaded_at": datetime.now(UTC).isoformat(),
+                "model": model or None,
+                "model_revision": model_revision or None,
+                "license": license or None,
+                "seed": int(seed) if seed.strip().isdigit() else None,
+                "prompt": release.prompt,
+                "notes": notes or None,
+            }
         try:
             asset = assets.save_upload(
                 db, media_root, release, kind=kind, filename=file.filename or "upload",
@@ -375,6 +449,133 @@ def create_app(settings: Settings | None = None, generator: Generator | None = N
             raise HTTPException(404, "no audio for this release")
         return FileResponse(path)
 
+    # ------------------------------------------------------- human layer
+
+    @app.get("/api/freesound/search")
+    def freesound_search(q: str, fs: Freesound = Depends(get_freesound)):
+        if not q.strip():
+            raise HTTPException(422, "empty query")
+        try:
+            return [s.as_dict() for s in fs.search(q.strip())]
+        except FreesoundError as exc:
+            raise HTTPException(502, str(exc)) from exc
+
+    @app.post("/api/releases/{release_id}/human/freesound", response_model=AssetOut,
+              status_code=201)
+    def freesound_import(release_id: int, body: FreesoundImport, db: Session = Depends(get_db),
+                         fs: Freesound = Depends(get_freesound)):
+        release = load(db, release_id)
+        if release.status not in REVIEWABLE:
+            raise HTTPException(409, f"cannot add files in status {release.status.value!r}")
+        try:
+            sound = fs.sound(body.sound_id)
+            source = human.check("freesound", sound.licence or sound.licence_url, sound.username,
+                                 sound.name, sound.url,
+                                 "Freesound HQ MP3 preview; download the original for final mixes")
+        except FreesoundError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        except human.LicenceError as exc:
+            raise HTTPException(422, f"{sound.name}: {exc}") from exc
+        n = len(release.assets) + 1
+        dest = assets.release_dir(media_root, release) / (
+            f"human-{n:03d}-freesound-{sound.id}-{assets.safe_name(sound.name)}.mp3")
+        try:
+            fs.download_preview(sound, dest, settings.max_upload_mb << 20)
+            asset = assets.register(
+                db, media_root, release, kind="human", path=dest, original_name=sound.name,
+                provenance={**source.as_provenance(), "freesound_id": sound.id,
+                            "license_url": sound.licence_url, "uploaded_by": body.actor or None,
+                            "uploaded_at": datetime.now(UTC).isoformat()},
+            )
+        except (FreesoundError, assets.AssetError) as exc:
+            db.rollback()
+            dest.unlink(missing_ok=True)
+            raise HTTPException(502 if isinstance(exc, FreesoundError) else 422, str(exc)) from exc
+        status = release.status.value
+        release.events.append(ReleaseEvent(
+            action="add_human", from_status=status, to_status=status, actor=body.actor,
+            note=f"Freesound {sound.id} {sound.name!r} by {sound.username} ({source.licence})",
+        ))
+        db.commit()
+        return asset
+
+    # ------------------------------------------------------------- cover/card
+
+    @app.post("/api/releases/{release_id}/cover", response_model=ReleaseDetail)
+    def make_cover(release_id: int, actor: str = "", db: Session = Depends(get_db)):
+        release = load(db, release_id)
+        if release.status not in REVIEWABLE:
+            raise HTTPException(409, f"cannot add files in status {release.status.value!r}")
+        seed = (release.seed if release.seed is not None else release.id * 7919) + sum(
+            1 for a in release.assets if a.kind == "artwork")
+        if not release.capture_time:
+            release.capture_time = covers.capture_time_for(seed)
+        layer = next((a for a in release.assets if a.kind == "human"), None)
+        meta = " · ".join(x for x in [
+            f"{release.bpm} BPM" if release.bpm else "", release.musical_key or "",
+            f"field rec: {layer.provenance.get('title') or layer.original_name}"[:48] if layer else "",
+        ] if x) or (release.lane or "Nocturna")
+        n = len(release.assets) + 1
+        dest = assets.release_dir(media_root, release) / f"artwork-{n:03d}-cover.png"
+        text_ = covers.CoverText(release.catalog_no, release.capture_time, release.title, meta)
+        settings_used = covers.render(text_, seed, dest, serif_font=settings.cover_font_serif,
+                                      mono_font=settings.cover_font_mono)
+        try:
+            asset = assets.register(db, media_root, release, kind="artwork", path=dest,
+                                    original_name=dest.name,
+                                    provenance={"source": "generated", **settings_used,
+                                                "license": "owned (procedural, no model)",
+                                                "generated_at": datetime.now(UTC).isoformat()})
+        except assets.AssetError as exc:
+            db.rollback()
+            raise HTTPException(422, str(exc)) from exc
+        status = release.status.value
+        release.events.append(ReleaseEvent(action="add_artwork", from_status=status,
+                                           to_status=status, actor=actor,
+                                           note=f"Infrared cover (seed {seed}, sha256 {asset.sha256[:12]})"))
+        db.commit()
+        return to_out(release, ReleaseDetail)
+
+    @app.get("/api/releases/{release_id}/card", response_class=PlainTextResponse)
+    def provenance_card(release_id: int, db: Session = Depends(get_db)):
+        return card.render(load(db, release_id))
+
+    # ---------------------------------------------------------------- youtube
+
+    @app.post("/api/releases/{release_id}/youtube", response_model=list[UploadOut],
+              status_code=201)
+    def schedule_youtube(release_id: int, body: ScheduleRequest, background: BackgroundTasks,
+                         db: Session = Depends(get_db)):
+        release = load(db, release_id)
+        try:
+            booked = publishing.schedule(db, release, settings, kinds=body.kinds, actor=body.actor)
+        except (publishing.PublishError, youtube.YouTubeError) as exc:
+            db.rollback()
+            raise HTTPException(409, str(exc)) from exc
+        db.commit()
+        background.add_task(run_uploads, [u.id for u in booked])
+        return booked
+
+    @app.get("/api/youtube/uploads", response_model=list[UploadOut])
+    def list_uploads(db: Session = Depends(get_db)):
+        return db.scalars(select(YouTubeUpload).order_by(YouTubeUpload.publish_at.desc())).all()
+
+    @app.post("/api/youtube/uploads/{upload_id}/retry", response_model=UploadOut)
+    def retry_upload(upload_id: int, background: BackgroundTasks, db: Session = Depends(get_db)):
+        upload = db.get(YouTubeUpload, upload_id)
+        if upload is None:
+            raise HTTPException(404, "upload not found")
+        if upload.status != "failed":
+            raise HTTPException(409, "only failed uploads can be retried")
+        if not settings.youtube_enabled:
+            raise HTTPException(409, "YouTube uploads are off")
+        if publishing._aware(upload.publish_at) <= datetime.now(UTC):
+            raise HTTPException(409, "its slot has passed; schedule the release again")
+        upload.status, upload.error = "queued", None
+        db.commit()
+        background.add_task(run_uploads, [upload.id])
+        return upload
+
     # ----------------------------------------------------- provenance/package
 
     def provenance_record(release: Release) -> dict:
@@ -397,6 +598,8 @@ def create_app(settings: Settings | None = None, generator: Generator | None = N
             "metadata": {
                 "title": release.title, "description": release.description,
                 "credits": release.credits, "tags": release.tags,
+                "catalog_no": release.catalog_no, "capture_time": release.capture_time,
+                "human_credits": human.credits(release.assets),
                 "ai_disclosure": AI_DISCLOSURE,
             },
             "checklist": {
@@ -404,6 +607,9 @@ def create_app(settings: Settings | None = None, generator: Generator | None = N
                 for key, label in CHECKLIST_ITEMS.items()
             },
             "assets": [asset_dict(a) for a in release.assets],
+            "youtube_uploads": [
+                UploadOut.model_validate(u).model_dump(mode="json") for u in release.uploads
+            ],
             "history": [
                 {"action": e.action, "from": e.from_status, "to": e.to_status, "note": e.note,
                  "actor": e.actor, "at": e.created_at.isoformat()}
@@ -441,6 +647,8 @@ def create_app(settings: Settings | None = None, generator: Generator | None = N
                         compress_type=zipfile.ZIP_DEFLATED)
             zf.writestr("metadata.json", json.dumps(record["metadata"], indent=2),
                         compress_type=zipfile.ZIP_DEFLATED)
+            zf.writestr("PROVENANCE-CARD.txt", card.render(release),
+                        compress_type=zipfile.ZIP_DEFLATED)
             zf.writestr("UPLOAD-CHECKLIST.txt", upload_notes(release),
                         compress_type=zipfile.ZIP_DEFLATED)
         return FileResponse(out, media_type="application/zip", filename=out.name)
@@ -449,10 +657,11 @@ def create_app(settings: Settings | None = None, generator: Generator | None = N
         return "\n".join([
             f"{release.title}",
             "",
-            "Manual upload steps (Nocturna never publishes automatically):",
+            "If YouTube uploads are enabled, Nocturna uploads this release as PRIVATE with a",
+            "scheduled publish time and the AI disclosure set. Manual upload steps otherwise:",
             "1. Upload the delivery WAV with the artwork as private or unlisted.",
             "2. YouTube Studio > Details > Altered or synthetic content: Yes (AI-generated music).",
-            "3. Paste title, description, credits and tags from metadata.json.",
+            "3. Paste title, description, credits, human_credits and tags from metadata.json.",
             "4. Wait for copyright/Content ID checks before changing visibility.",
             "5. Keep the master FLAC and provenance.json in your archive.",
         ]) + "\n"

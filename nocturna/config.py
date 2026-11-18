@@ -24,6 +24,28 @@ class Settings(BaseSettings):
     delivery_true_peak_dbtp: float = -1.0
     max_upload_mb: int = 1024
 
+    # Human layer: Freesound search and import (free key at https://freesound.org/apiv2/apply).
+    freesound_api_key: str = ""
+
+    # Covers: optional font files (an italic serif and a monospace); system fonts otherwise.
+    cover_font_serif: str | None = None
+    cover_font_mono: str | None = None
+
+    # YouTube uploads. Off until `python -m nocturna.youtube auth` has stored a token.
+    youtube_enabled: bool = False
+    # Schedule uploads automatically when a release is approved (otherwise press the button).
+    youtube_auto_schedule: bool = False
+    youtube_client_secrets: Path = Path("./data/youtube-client-secret.json")
+    youtube_token_path: Path = Path("./data/youtube-token.json")
+    youtube_timezone: str = "Europe/Budapest"
+    # Weekly publish slots, local time. One upload per slot keeps the cadence human.
+    youtube_long_slots: str = "tue 20:00,fri 20:00"
+    youtube_short_slots: str = "mon 18:00,wed 18:00,thu 18:00,sat 12:00"
+    # Never schedule sooner than this, so there is time to check the private upload.
+    youtube_min_lead_hours: int = 12
+    # Upload Shorts too (a vertical clip from each release).
+    youtube_shorts: bool = True
+
     # Apply Alembic migrations on startup, so a fresh clone needs no manual step.
     auto_migrate: bool = True
 

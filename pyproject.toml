@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nocturna"
-version = "0.3.0"
-description = "Local, approval-first release desk for a dark instrumental music label"
+version = "0.4.0"
+description = "Local, approval-first release desk for an AI-assisted instrumental music label"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<1",
@@ -17,10 +17,12 @@ dependencies = [
   "pydantic>=2.7",
   "pydantic-settings>=2.3",
   "python-multipart>=0.0.9",
+  "pillow>=10.1",
 ]
 
 [project.optional-dependencies]
 postgres = ["psycopg[binary]>=3.2"]
+youtube = ["google-api-python-client>=2.100", "google-auth-oauthlib>=1.2"]
 dev = ["pytest>=8"]
 
 [tool.setuptools.packages.find]

@@ -1,3 +1,3 @@
-"""Nocturna: local, approval-first release desk for a dark instrumental label."""
+"""Nocturna: local, approval-first release desk for an AI-assisted instrumental label."""
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

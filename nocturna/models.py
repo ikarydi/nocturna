@@ -29,6 +29,7 @@ CHECKLIST_ITEMS: dict[str, str] = {
     "audio_qc": "Loudness, peaks and duration reviewed; no clipping or artifacts",
     "artwork": "Artwork is original or licensed, and crops cleanly to 16:9 and square",
     "metadata": "Title, description, credits and tags are complete and accurate",
+    "human_layer": "A human-made layer (own recording or licensed human sound) is audible in the mix",
     "ai_disclosure": "YouTube 'altered or synthetic content' disclosure will be set on upload",
     "distinct": "Distinct from recent releases (not templated or mass-produced)",
 }
@@ -76,6 +77,8 @@ class Release(Base):
         ForeignKey("prompt_templates.id", ondelete="SET NULL"), nullable=True
     )
     seed: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # "HH:MM", the night-time the release is presented as captured at (Infrared Archive brand).
+    capture_time: Mapped[str | None] = mapped_column(String(5), nullable=True)
     # Release metadata for the eventual (manual) upload.
     description: Mapped[str] = mapped_column(Text, default="")
     credits: Mapped[str] = mapped_column(Text, default="")
@@ -93,6 +96,13 @@ class Release(Base):
         back_populates="release", cascade="all, delete-orphan", order_by="Asset.id"
     )
     template: Mapped[PromptTemplate | None] = relationship()
+    uploads: Mapped[list[YouTubeUpload]] = relationship(
+        back_populates="release", cascade="all, delete-orphan", order_by="YouTubeUpload.id"
+    )
+
+    @property
+    def catalog_no(self) -> str:
+        return f"NCT-{self.id or 0:04d}"
 
     def latest_asset(self, kind: str) -> Asset | None:
         matches = [a for a in self.assets if a.kind == kind]
@@ -110,7 +120,8 @@ class Asset(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     release_id: Mapped[int] = mapped_column(ForeignKey("releases.id", ondelete="CASCADE"), index=True)
-    # take (raw generated/uploaded audio), master (lossless), delivery (loudness-normalized), artwork
+    # take (raw generated/uploaded audio), human (human-made layer with its licence),
+    # master (lossless), delivery (loudness-normalized), artwork, video, short, thumbnail
     kind: Mapped[str] = mapped_column(String(20))
     path: Mapped[str] = mapped_column(String(500))  # relative to AUDIO_DIR
     original_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
@@ -155,3 +166,26 @@ class ReleaseEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     release: Mapped[Release] = relationship(back_populates="events")
+
+
+class YouTubeUpload(Base):
+    """One scheduled upload of an approved release (long-form video or Short)."""
+
+    __tablename__ = "youtube_uploads"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    release_id: Mapped[int] = mapped_column(ForeignKey("releases.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(10))  # long | short
+    # queued -> uploading -> scheduled | failed
+    status: Mapped[str] = mapped_column(String(20), default="queued")
+    publish_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    video_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor: Mapped[str] = mapped_column(String(100), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    release: Mapped[Release] = relationship(back_populates="uploads")

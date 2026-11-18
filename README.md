@@ -1,8 +1,9 @@
 # Nocturna release desk
 
-A local, approval-first production desk for a dark instrumental music label. It runs on
-CPU: the API, LangGraph workflow, database, dashboard and ffmpeg audio tools. It downloads no
-model weights and never publishes anywhere. Every release stops at a human decision.
+A local, approval-first production desk for an AI-assisted instrumental music label. It runs
+on CPU: the API, LangGraph workflow, database, dashboard and ffmpeg audio tools. It downloads
+no model weights. Every release stops at a human decision, and only approved releases can
+be uploaded to YouTube, always as private scheduled uploads with the AI disclosure set.
 
 - **Stage 1:** release queue, workflow, approve/reject with history.
 - **Stage 2:** lane templates, provenance for every file, audio QC, lossless master and
@@ -11,6 +12,10 @@ model weights and never publishes anywhere. Every release stops at a human decis
 - **Stage 3:** optional music generation through ACE-Step 1.5, via a small adapter service,
   with a fake generator for trying the flow without a model. See
   [docs/generation.md](docs/generation.md).
+- **Stage 4 (Infrared Archive):** the new look; a required human layer of real recordings or
+  licensed human-made sounds, with Freesound search ([docs/human-layer.md](docs/human-layer.md));
+  procedural thermal covers and a provenance card; 8 starter lane templates (3 genres and 5
+  fusions); and scheduled YouTube uploads with Shorts ([docs/youtube.md](docs/youtube.md)).
 
 ## Quick start (WSL2 Ubuntu)
 
@@ -48,11 +53,16 @@ and expose the db port (add `ports: ["127.0.0.1:5432:5432"]` to the `db` service
    the generator produce one. Every file gets a SHA-256, measurements and a provenance record.
 4. **Export master + delivery**: 24-bit FLAC master at the source rate, plus a two-pass
    EBU R128 normalized 48 kHz / 24-bit WAV (default -14 LUFS, -1 dBTP; see `.env.example`).
-5. Upload **artwork**, fill in **metadata**, and tick the **release checklist**.
-6. **Approve.** This is refused until a master and delivery exist and every checklist item is
-   ticked. Approved releases are frozen; reopen to change them.
-7. **Download package**: master, delivery, artwork, `provenance.json`, `metadata.json` and an
-   upload checklist that includes YouTube's AI disclosure step.
+5. Add a **human layer**: your own recording, or a licensed human-made sound (CC0/CC BY from
+   Freesound, public domain, a royalty-free pack, a session player).
+6. **Make an Infrared cover** (or upload artwork), fill in **metadata**, and tick the
+   **release checklist**.
+7. **Approve.** This is refused until a master and delivery and a human layer exist and every
+   checklist item is ticked. Approved releases are frozen; reopen to change them.
+8. **Download package**: master, delivery, artwork, `provenance.json`, `metadata.json`, the
+   provenance card and an upload checklist.
+9. With YouTube enabled, **schedule** the release (or let approval do it): a private video and
+   a Short are uploaded for the next free weekly slots.
 
 Set your name in the "Reviewer" box; it is recorded on every action in the history.
 
@@ -94,6 +104,14 @@ with ACE_STEP_ENABLED=true:  draft ──► generating ──► review | faile
 | POST | `/api/releases/{id}/comments` | reviewer note without a status change |
 | GET | `/api/releases/{id}/provenance` | full provenance record (JSON) |
 | GET | `/api/releases/{id}/package` | zip delivery package (approved only) |
+| POST | `/api/releases/{id}/cover` | render an Infrared Archive cover as artwork |
+| GET | `/api/releases/{id}/card` | the provenance card (plain text) |
+| GET | `/api/human/sources` | accepted human-layer source types |
+| GET | `/api/freesound/search?q=` | Freesound search, CC0/CC BY marked usable |
+| POST | `/api/releases/{id}/human/freesound` | `{"sound_id": 123}` import as human layer |
+| POST | `/api/releases/{id}/youtube` | `{"kinds": ["long", "short"]}` book and upload (approved) |
+| GET | `/api/youtube/uploads` | all scheduled uploads |
+| POST | `/api/youtube/uploads/{id}/retry` | retry a failed upload |
 | GET/POST/PATCH | `/api/templates` | lane templates |
 | GET | `/api/checklist` | checklist items and labels |
 | GET | `/api/assets/{id}/file` | download one file |

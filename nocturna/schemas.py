@@ -48,6 +48,7 @@ class ReleaseCreate(BaseModel):
     duration_s: int = Field(default=180, ge=15, le=900)
     template_id: int | None = None
     seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
+    capture_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
 class ReleaseUpdate(BaseModel):
@@ -64,9 +65,10 @@ class ReleaseUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=5000)
     credits: str | None = Field(default=None, max_length=2000)
     tags: str | None = Field(default=None, max_length=500)
+    capture_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
-METADATA_FIELDS = {"title", "description", "credits", "tags"}
+METADATA_FIELDS = {"title", "description", "credits", "tags", "capture_time"}
 
 
 class Decision(BaseModel):
@@ -122,6 +124,31 @@ class AssetOut(BaseModel):
     created_at: datetime
 
 
+class UploadOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    release_id: int
+    kind: str
+    status: str
+    publish_at: datetime
+    video_id: str | None
+    title: str
+    error: str | None
+    actor: str
+    created_at: datetime
+
+
+class ScheduleRequest(BaseModel):
+    kinds: list[Literal["long", "short"]] | None = None
+    actor: str = Actor
+
+
+class FreesoundImport(BaseModel):
+    sound_id: int = Field(ge=1)
+    actor: str = Actor
+
+
 class ReleaseOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -143,6 +170,8 @@ class ReleaseOut(BaseModel):
     credits: str
     tags: str
     checklist: dict[str, bool]
+    capture_time: str | None = None
+    catalog_no: str = ""
     created_at: datetime
     updated_at: datetime
     has_audio: bool = False
@@ -152,3 +181,5 @@ class ReleaseDetail(ReleaseOut):
     events: list[EventOut] = []
     assets: list[AssetOut] = []
     approval_blockers: list[str] = []
+    uploads: list[UploadOut] = []
+    human_credits: list[str] = []
