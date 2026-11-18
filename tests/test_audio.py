@@ -73,3 +73,26 @@ def test_inspect_image(tmp_path):
     assert small.width == 800 and any("small" in w for w in small.qc_warnings)
     assert any("aspect" in w for w in small.qc_warnings)
     assert audio.inspect_image(make_image(tmp_path / "w.png", "1920x1080")).qc_warnings == []
+
+
+def test_broken_generation_detects_nan_and_clicks(tmp_path):
+    import subprocess
+
+    from nocturna import audio as a
+
+    def make(name, expr, *codec):
+        path = tmp_path / name
+        subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+                        "-i", f"aevalsrc={expr}|{expr}:s=48000:d=2", *codec, str(path)],
+                       check=True)
+        return path
+
+    good = make("good.flac", "0.89*sin(2*PI*110*t)", "-c:a", "flac")  # about -1 dBFS
+    assert a.broken_generation(good) is None
+    # Near-silence with full-scale spikes: what FLAC makes of NaN samples.
+    clicks = make("clicks.flac", "if(eq(mod(n\\,4800)\\,0)\\,1\\,0)", "-c:a", "flac")
+    assert "NaN" in a.broken_generation(clicks)
+    nan = make("nan.wav", "if(between(n\\,1000\\,2000)\\,0/0\\,0.5*sin(2*PI*110*t))",
+               "-c:a", "pcm_f32le")
+    reason = a.broken_generation(nan)
+    assert reason and "NaN" in reason

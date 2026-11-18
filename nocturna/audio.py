@@ -113,6 +113,31 @@ def loudness(path: Path) -> dict:
     return parse_ebur128_summary(proc.stderr)
 
 
+_ASTATS_PEAK = re.compile(r"Overall.*?Peak level dB:\s*(-?[\d.]+|-inf)", re.S)
+
+
+def broken_generation(path: Path, normalized_peak_dbfs: float = -1.0) -> str | None:
+    """Why a freshly generated file is broken, or None if it looks sane.
+
+    ACE-Step peak-normalizes every output (to -1 dBFS by default). When the model's numbers
+    overflow (float16 on pre-Ampere GPUs such as the T1200) it saves NaNs: float files keep
+    them, integer files (FLAC) turn them into full-scale clicks over near-silence. Either way
+    the take is not music, so it should never reach review.
+    """
+    proc = _run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(path),
+                 "-af", "astats=measure_perchannel=none", "-f", "null", "-"])
+    peak_m = _ASTATS_PEAK.search(proc.stderr)
+    peak = _float(peak_m.group(1)) if peak_m else None
+    bad = sum(float(v) for v in re.findall(r"Number of (?:NaNs|Infs):\s*([\d.]+)",
+                                             proc.stderr.split("Overall", 1)[-1]))
+    if bad:
+        return f"the audio contains {int(bad)} invalid (NaN/Inf) samples"
+    if peak is not None and peak >= normalized_peak_dbfs + 0.9:
+        return (f"the audio peaks at {peak:.2f} dBFS although ACE-Step normalizes to "
+                f"{normalized_peak_dbfs:g} dBFS, which means it produced invalid (NaN) values")
+    return None
+
+
 def qc_warnings(info: Inspection, expected_duration_s: int | None = None) -> list[str]:
     w: list[str] = []
     if info.sample_peak_dbfs is not None and info.sample_peak_dbfs >= -0.1:

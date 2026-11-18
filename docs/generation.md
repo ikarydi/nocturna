@@ -90,9 +90,32 @@ WSL), check `nvidia-smi` works in Ubuntu, then run the same script. Setting
 | `ADAPTER_THINKING` | `false` | Use the 5Hz LM (slow on CPU) |
 | `ADAPTER_ACESTEP_REPO_DIR` | set by start script | Used to record the ACE-Step commit |
 | `ADAPTER_LICENSE` | `MIT` | Recorded on every generated take |
+| `ADAPTER_CHECK_OUTPUT` | `true` | Refuse broken (NaN) output instead of saving it as a take |
 
 **Upgrading from Stage 1/2:** if your `.env` still has `ACE_STEP_URL=http://127.0.0.1:8001`,
 change it to `:8002`. Port 8001 is ACE-Step itself, which Nocturna cannot talk to directly.
+
+## Older GPUs: broken, near-empty clips
+
+GPUs older than NVIDIA's Ampere generation (for example the T1200, GTX 16xx and RTX 20xx)
+have no bfloat16, so ACE-Step falls back to float16. On these cards the numbers can
+overflow. You can spot it in `data/logs/acestep.log`:
+
+```
+[Normalization] Audio 0 BEFORE: Peak=nan
+```
+
+The saved file is then near-silence with full-scale clicks: about −23 LUFS with a 0 dBFS
+peak. The adapter now checks every file. If it finds NaN samples, or a peak above ACE-Step's
+own −1 dBFS normalization, it deletes the file and fails the run with a clear message, so the
+broken clip never shows up as a take.
+
+What to try:
+
+1. Decode on the processor: `ACESTEP_VAE_ON_CPU=true bash scripts/start-generation.sh`.
+   This only helps if the overflow happens in the decoder.
+2. If the log still says `Peak=nan`, the card can't run the model. Use a cloud GPU for
+   generation, or an Ampere or newer card (RTX 30xx and up).
 
 ## Limits
 
