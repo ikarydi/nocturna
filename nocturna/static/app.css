@@ -86,3 +86,4 @@ a { color: var(--accent); }
 .uploads .failed { color: var(--bad); }
 .cover-thumb { width: 120px; height: 120px; object-fit: cover; display: block; border: 1px solid var(--line); }
 .head-row { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 12px; }
+.human label.check { display: flex; flex-direction: row; gap: 8px; align-items: center; } .human label.check input { width: auto; accent-color: var(--accent); }

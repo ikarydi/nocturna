@@ -34,6 +34,7 @@ from .schemas import (
     Comment,
     Decision,
     FreesoundImport,
+    MixRequest,
     ReleaseCreate,
     ReleaseDetail,
     ReleaseOut,
@@ -103,9 +104,10 @@ def create_app(
         yield from session_scope(factory)
 
     def playable(release: Release) -> Path | None:
-        for kind in ("delivery", "master", "take"):
-            asset = release.latest_asset(kind)
-            if asset and (path := assets.resolve(media_root, asset.path)):
+        # The newest audio wins, so a fresh mix plays before the old delivery does.
+        for asset in sorted((a for a in release.assets if a.kind in ("delivery", "master", "take")),
+                            key=lambda a: a.id, reverse=True):
+            if path := assets.resolve(media_root, asset.path):
                 return path
         return assets.resolve(media_root, release.audio_path) if release.audio_path else None
 
@@ -498,6 +500,29 @@ def create_app(
         ))
         db.commit()
         return asset
+
+    # ------------------------------------------------------------- mix
+
+    @app.post("/api/releases/{release_id}/mix", response_model=ReleaseDetail)
+    def mix(release_id: int, body: MixRequest, db: Session = Depends(get_db)):
+        release = load(db, release_id)
+        if release.status not in REVIEWABLE:
+            raise HTTPException(409, f"cannot mix in status {release.status.value!r}")
+        try:
+            take = assets.mix_human(db, media_root, release, level_db=body.level_db,
+                                    fade_s=body.fade_s, loop=body.loop)
+        except assets.AssetError as exc:
+            db.rollback()
+            raise HTTPException(422, str(exc)) from exc
+        status = release.status.value
+        layers = len(take.provenance["human_layers"])
+        release.events.append(ReleaseEvent(
+            action="mix", from_status=status, to_status=status, actor=body.actor,
+            note=f"{layers} human layer(s) mixed at {body.level_db:+g} LU into take "
+                 f"{take.provenance['from_asset']} (sha256 {take.sha256[:12]})",
+        ))
+        db.commit()
+        return to_out(release, ReleaseDetail)
 
     # ------------------------------------------------------------- cover/card
 

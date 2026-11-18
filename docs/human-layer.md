@@ -20,6 +20,24 @@ are refused. Sound recordings published more than 70 years ago are generally pub
 in the EU, but a modern remaster can carry new rights, so keep the source page. Popular
 sample-pack loops can trigger Content ID claims; chop and process them.
 
+## Mixing it in
+
+Once a release has a take and at least one human layer, the Human layer box shows
+**Mix into track**. It lays every human layer under the take and saves the result as a new
+take; the original is kept.
+
+- **Level** is set by loudness, not raw volume: *Balanced* puts the layer 10 LU under the
+  track, *Subtle* 16, *Upfront* 6. A quiet field recording and a loud loop end up equally
+  present.
+- **Loop if shorter** repeats a short sound across the whole track. Every layer fades in and
+  out, and a limiter keeps the mix below -0.5 dBFS.
+- **Mix again** always starts from the original take, so layers are never stacked twice.
+- Export master + delivery again after mixing. Approval is refused while the delivery is
+  older than the newest take.
+
+For anything more musical (placing a phrase at a drop, EQ, reverb), mix in Audacity or a DAW
+and upload the result as a new take instead.
+
 ## Freesound
 
 Set `FREESOUND_API_KEY` (free at https://freesound.org/apiv2/apply) and the dashboard shows a

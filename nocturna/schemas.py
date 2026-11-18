@@ -144,6 +144,13 @@ class ScheduleRequest(BaseModel):
     actor: str = Actor
 
 
+class MixRequest(BaseModel):
+    level_db: float = Field(-10.0, ge=-30.0, le=0.0)  # human layer loudness relative to the take
+    fade_s: float = Field(3.0, ge=0.0, le=15.0)
+    loop: bool = True
+    actor: str = Actor
+
+
 class FreesoundImport(BaseModel):
     sound_id: int = Field(ge=1)
     actor: str = Actor
