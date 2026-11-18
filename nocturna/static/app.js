@@ -92,6 +92,9 @@ function render(r) {
   const dis = (on) => (on ? "" : "disabled");
   const cover = [...r.assets].reverse().find((a) => a.kind === "artwork");
   const layers = r.assets.filter((a) => a.kind === "human");
+  const takes = r.assets.filter((a) => a.kind === "take");
+  const hasTake = takes.length > 0;
+  const mixed = takes.length && takes[takes.length - 1].provenance?.source === "mix";
   $("#detail").innerHTML = `
     <div class="head-row">
       ${cover ? `<img class="cover-thumb" src="/api/assets/${cover.id}/file" alt="Cover of ${esc(r.title)}">` : ""}
@@ -123,6 +126,16 @@ function render(r) {
         <label>Source link<input name="source_url" placeholder="https://"></label>
         <button type="submit">Add human layer</button>
       </form>
+      ${reviewable && layers.length && hasTake ? `
+      <form id="mix" class="inline">
+        <label>Human layer level<select name="level_db">
+          <option value="-16">Subtle (16 LU under)</option>
+          <option value="-10" selected>Balanced (10 LU under)</option>
+          <option value="-6">Upfront (6 LU under)</option></select></label>
+        <label class="check"><input type="checkbox" name="loop" checked> Loop if shorter</label>
+        <button type="submit">${mixed ? "Mix again" : "Mix into track"}</button>
+      </form>
+      <p class="muted">${mixed ? "Mixed. Listen above, then export master + delivery again." : "Mixes every human layer under the generated take as a new take. The original stays untouched."}</p>` : ""}
       ${reviewable && health.freesound_enabled ? `
       <form id="fs-search" class="inline">
         <label>Search Freesound (CC0 and CC BY only)<input name="q" placeholder="rain on window, cimbalom, train at night"></label>
@@ -253,6 +266,15 @@ function render(r) {
     try { await api(`/api/releases/${r.id}/assets`, { method: "POST", body: fd }); await select(r.id); }
     catch (err) { $("#human-err").textContent = err.message; }
   };
+  if ($("#mix")) {
+    $("#mix").onsubmit = (e) => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      const b = e.target.querySelector("button"); b.disabled = true; b.textContent = "Mixing…";
+      act(() => post(`/api/releases/${r.id}/mix`, { level_db: Number(f.get("level_db")), loop: f.get("loop") === "on", actor: actor() })
+        .catch((err) => { b.disabled = false; b.textContent = "Mix into track"; throw err; }), "#human-err");
+    };
+  }
   if ($("#fs-search")) {
     $("#fs-search").onsubmit = async (e) => {
       e.preventDefault();

@@ -7,7 +7,7 @@ from typing import BinaryIO
 
 from sqlalchemy.orm import Session
 
-from . import audio
+from . import audio, mixing
 from .models import Asset, Release
 
 AUDIO_EXTS = {".wav", ".flac", ".mp3", ".aiff", ".aif", ".ogg", ".m4a"}
@@ -165,3 +165,62 @@ def export_masters(db: Session, media_root: Path, release: Release, *, target_lu
     except audio.AudioError as exc:
         raise AssetError(str(exc)) from exc
     return master, delivery
+
+
+def base_take(release: Release) -> Asset | None:
+    """The newest take that is not itself a mix, so re-mixing never stacks layers twice."""
+    for asset in reversed(release.assets):
+        if asset.kind == "take" and (asset.provenance or {}).get("source") != "mix":
+            return asset
+    return None
+
+
+def mix_human(db: Session, media_root: Path, release: Release, *, level_db: float = -10.0,
+              fade_s: float = 3.0, loop: bool = True) -> Asset:
+    """Mix every human layer into the base take and register the result as a new take."""
+    take = base_take(release)
+    if take is None:
+        raise AssetError("no take to mix into; generate or upload audio first")
+    layers = [a for a in release.assets if a.kind == "human"]
+    if not layers:
+        raise AssetError("add a human layer first")
+    if not audio.ffmpeg_available():
+        raise AssetError("ffmpeg is not installed (run scripts/setup-wsl.sh)")
+    take_path = resolve(media_root, take.path)
+    if take_path is None:
+        raise AssetError("take file is missing on disk")
+    inputs = []
+    for layer in layers:
+        path = resolve(media_root, layer.path)
+        if path is None:
+            raise AssetError(f"human layer {layer.id} is missing on disk")
+        inputs.append(mixing.Layer(path, layer.integrated_lufs, layer.duration_s))
+    duration = take.duration_s or release.duration_s
+    if not duration:
+        raise AssetError("take length is unknown; re-upload the take")
+    n = len(release.assets) + 1
+    dest = release_dir(media_root, release) / f"take-{n:03d}-mix-{safe_name(release.title).lower()}.wav"
+    try:
+        settings = mixing.mix(take_path, take.integrated_lufs, duration, take.sample_rate or 48000,
+                              inputs, dest, level_db=level_db, fade_s=fade_s, loop=loop)
+    except audio.AudioError as exc:
+        dest.unlink(missing_ok=True)
+        raise AssetError(str(exc)) from exc
+    src = take.provenance or {}
+    provenance = {
+        # Keep the generation facts so the card, rights check and package still describe the music.
+        **{k: src[k] for k in ("model", "model_revision", "license", "seed", "prompt", "template",
+                               "generator_metadata") if k in src},
+        "source": "mix",
+        "from_asset": take.id,
+        "from_sha256": take.sha256,
+        "from_source": src.get("source"),
+        "human_layers": [{"asset": a.id, "sha256": a.sha256,
+                          "title": (a.provenance or {}).get("title") or a.original_name,
+                          "license": (a.provenance or {}).get("license")} for a in layers],
+        "settings": settings,
+        "tool": "ffmpeg",
+        "tool_version": audio.ffmpeg_version(),
+    }
+    return register(db, media_root, release, kind="take", path=dest, parent=take,
+                    provenance=provenance, original_name=dest.name)
