@@ -67,6 +67,11 @@ Without an NVIDIA GPU the script runs ACE-Step on **CPU with its language model 
 (`ACESTEP_INIT_LLM=false`). Expect minutes per clip. Start with a **30-second** concept,
 note how long it takes, and listen before trying longer ones. Logs go to `data/logs/`.
 
+On an NVIDIA GPU with less than 8 GB (common in laptops) the script switches to low-VRAM mode:
+`ACESTEP_OFFLOAD_TO_CPU=true`, `ACESTEP_OFFLOAD_DIT_TO_CPU=true`, `ACESTEP_INIT_LLM=false`.
+Without it the model stays in VRAM, the final audio decode falls back to a single CPU core,
+and a 15-second clip can take hours. Set any of these yourself to override.
+
 With a GPU later: install the NVIDIA Windows driver with WSL support (no Linux driver inside
 WSL), check `nvidia-smi` works in Ubuntu, then run the same script. Setting
 `ADAPTER_THINKING=true` enables ACE-Step's language-model planning for better structure.

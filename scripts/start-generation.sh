@@ -28,6 +28,16 @@ else
   if ! nvidia-smi >/dev/null 2>&1; then
     echo "==> No NVIDIA GPU visible: running ACE-Step on CPU without the language model."
     export ACESTEP_INIT_LLM=false
+  else
+    vram_mb=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -n1 | tr -dc '0-9')
+    if [ -n "$vram_mb" ] && [ "$vram_mb" -lt 8192 ]; then
+      # Small GPU: without offload the DiT stays in VRAM, the VAE decode falls back to one CPU
+      # core and a 15 s clip can take hours. Offloading frees VRAM so decoding stays on the GPU.
+      echo "==> ${vram_mb} MB GPU: low-VRAM mode (models offloaded to CPU between steps, no LM)."
+      export ACESTEP_OFFLOAD_TO_CPU=${ACESTEP_OFFLOAD_TO_CPU:-true}
+      export ACESTEP_OFFLOAD_DIT_TO_CPU=${ACESTEP_OFFLOAD_DIT_TO_CPU:-true}
+      export ACESTEP_INIT_LLM=${ACESTEP_INIT_LLM:-false}
+    fi
   fi
   echo "==> Starting ACE-Step API on :8001 (first start may download the model)"
   ( cd "$ACESTEP_DIR" && ACESTEP_API_HOST=127.0.0.1 ACESTEP_API_PORT=8001 uv run acestep-api ) \
