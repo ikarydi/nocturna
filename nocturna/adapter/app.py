@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from .. import audio
 from .acestep import AceStepClient, AceStepError, build_task
 from .config import AdapterSettings, get_adapter_settings
 
@@ -73,6 +74,11 @@ def create_adapter(settings: AdapterSettings | None = None, client: AceStepClien
             client.download(result["file"], dest)
         except AceStepError as exc:
             raise HTTPException(502, str(exc)) from exc
+        if settings.check_output and (reason := audio.broken_generation(dest)):
+            dest.unlink(missing_ok=True)
+            raise HTTPException(502, f"ACE-Step returned broken audio: {reason}. This happens on "
+                                "older GPUs without bfloat16 (e.g. NVIDIA T1200 / GTX / RTX 20xx); "
+                                "see docs/generation.md")
         seed_value = str(result.get("seed_value") or "").split(",")[0].strip()
         return {
             "audio_path": str(dest.relative_to(media_dir)),

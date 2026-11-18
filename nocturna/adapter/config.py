@@ -30,6 +30,8 @@ class AdapterSettings(BaseSettings):
 
     poll_interval_s: float = 2.0
     timeout_s: float = 3600.0
+    # Reject NaN/garbage output (older GPUs) instead of handing it to review.
+    check_output: bool = True
 
 
 @lru_cache
