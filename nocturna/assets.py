@@ -12,7 +12,7 @@ from .models import Asset, Release
 
 AUDIO_EXTS = {".wav", ".flac", ".mp3", ".aiff", ".aif", ".ogg", ".m4a"}
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
-UPLOAD_KINDS = {"take": AUDIO_EXTS, "artwork": IMAGE_EXTS}
+UPLOAD_KINDS = {"take": AUDIO_EXTS, "human": AUDIO_EXTS, "artwork": IMAGE_EXTS}
 
 
 class AssetError(ValueError):
@@ -76,6 +76,10 @@ def register(
         qc_warnings=[],
     )
     _measure(asset, path, release.duration_s if kind == "take" else None)
+    if kind == "human":
+        # A human layer is a sound to mix in, not a finished track: length and loudness vary.
+        asset.qc_warnings = [w for w in asset.qc_warnings
+                             if not w.startswith(("duration", "mono", "lossy"))]
     release.assets.append(asset)
     db.flush()
     return asset

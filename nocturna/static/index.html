@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nocturna release desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=JetBrains+Mono:wght@400;500&amp;family=Inter+Tight:wght@400;500;600&amp;display=swap">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
@@ -17,7 +19,7 @@
 <main>
   <div class="col">
     <section class="panel" aria-labelledby="new-h">
-      <h2 id="new-h">New concept</h2>
+      <h2 id="new-h">New capture</h2>
       <form id="create">
         <label>Title<input name="title" required maxlength="200" placeholder="Ashes Over Vesper"></label>
         <label>Lane template<select name="template_id" id="template-select"><option value="">None</option></select></label>
@@ -29,7 +31,7 @@
           <label>Seconds<input name="duration_s" type="number" min="15" max="900" value="180"></label>
         </div>
         <label>Seed (optional, for reproducible generation)<input name="seed" type="number" min="0"></label>
-        <button type="submit">Create draft</button>
+        <button type="submit">Log draft</button>
         <p id="create-err" class="err" role="alert"></p>
       </form>
     </section>
@@ -56,7 +58,7 @@
 
   <section class="panel queue" aria-labelledby="queue-h">
     <div class="queue-head">
-      <h2 id="queue-h">Queue</h2>
+      <h2 id="queue-h">Tonight's log</h2>
       <nav id="filters" aria-label="Filter by status">
         <button data-status="" class="on">All</button>
         <button data-status="draft">Draft</button>

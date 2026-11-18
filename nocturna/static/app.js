@@ -4,6 +4,8 @@ let selected = null;
 let templates = [];
 let checklistItems = {};
 let generationOn = false;
+let health = {};
+let humanSources = {};
 
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt = (v, d = 1) => (v === null || v === undefined ? "–" : Number(v).toFixed(d));
@@ -36,7 +38,9 @@ async function loadHealth() {
   try {
     const h = await api("/health");
     generationOn = h.generation_enabled;
-    $("#health").innerHTML = `db <b>${esc(h.database)}</b> · generation <b>${h.generation_enabled ? esc(h.generator.status) : "off"}</b> · ffmpeg <b>${h.ffmpeg ? "ok" : "missing"}</b> · v${esc(h.version)}`;
+    health = h;
+    const yt = h.youtube.enabled ? (h.youtube.authorized ? (h.youtube.auto_schedule ? "auto" : "on") : "no token") : "off";
+    $("#health").innerHTML = `DB <b>${esc(h.database)}</b> · MUSIC GEN <b>${h.generation_enabled ? esc(h.generator.status) : "off"}</b> · YOUTUBE <b>${esc(yt)}</b> · FFMPEG <b>${h.ffmpeg ? "ok" : "missing"}</b> · v${esc(h.version)}`;
   } catch { $("#health").textContent = "API unreachable"; }
 }
 
@@ -55,7 +59,8 @@ async function loadList() {
   $("#empty").hidden = rows.length > 0;
   $("#list").innerHTML = rows.map((r) => `
     <li data-id="${r.id}" class="${r.id === selected ? "sel" : ""}" tabindex="0">
-      <div style="min-width:0"><div class="t">${esc(r.title)}</div><div class="l">${esc(r.lane || "no lane")}</div></div>
+      <span class="time">${esc(r.capture_time || "--:--")}</span>
+      <div style="min-width:0;flex:1"><div class="t">${esc(r.title)}</div><div class="l">${esc(r.catalog_no)} · ${esc(r.lane || "no lane")}</div></div>
       <span class="badge s-${r.status}">${r.status}</span>
     </li>`).join("");
 }
@@ -85,16 +90,47 @@ function render(r) {
   const audio = r.has_audio ? `<audio controls preload="none" src="/api/releases/${r.id}/audio"></audio>`
     : r.audio_url ? `<p><a href="${esc(r.audio_url)}" target="_blank" rel="noopener">Open generated audio</a></p>` : "";
   const dis = (on) => (on ? "" : "disabled");
+  const cover = [...r.assets].reverse().find((a) => a.kind === "artwork");
+  const layers = r.assets.filter((a) => a.kind === "human");
   $("#detail").innerHTML = `
-    <h3>${esc(r.title)}</h3>
+    <div class="head-row">
+      ${cover ? `<img class="cover-thumb" src="/api/assets/${cover.id}/file" alt="Cover of ${esc(r.title)}">` : ""}
+      <div style="min-width:0">
+        <div class="catalog">${esc(r.catalog_no)}${r.capture_time ? ` · CAPTURED ${esc(r.capture_time)}` : ""}</div>
+        <h3>${esc(r.title)}</h3>
+      </div>
+    </div>
     <div class="meta"><span class="badge s-${r.status}">${r.status}</span>
       ${esc(r.lane)} ${r.bpm ? `· ${r.bpm} bpm` : ""} ${r.musical_key ? `· ${esc(r.musical_key)}` : ""} · ${r.duration_s}s ${r.seed !== null ? `· seed ${r.seed}` : ""}
       · <a href="/api/releases/${r.id}/provenance" target="_blank">provenance</a>
+      · <a href="/api/releases/${r.id}/card" target="_blank">provenance card</a>
       ${r.status === "approved" ? ` · <a href="/api/releases/${r.id}/package"><b>download package</b></a>` : ""}</div>
     ${r.brief ? `<h2>Brief</h2><p>${esc(r.brief)}</p>` : ""}
     <h2>Generation prompt</h2>
     <pre>${r.prompt ? esc(r.prompt) : "Not prepared yet. Run the workflow."}</pre>
     ${notes.length ? `<ul class="notes">${notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
+
+    <div class="human">
+      <h2>Human layer · ${layers.length ? `${layers.length} attached` : "required before approval"}</h2>
+      ${layers.length ? `<ul class="uploads">${layers.map((a) => `<li>${esc(a.provenance.title || a.original_name)} · ${esc(a.provenance.source_type)} · ${esc(a.provenance.license)}</li>`).join("")}</ul>` : `<p class="muted">Add a real recording (yours, or a licensed human-made sound) to mix into this track.</p>`}
+      ${r.human_credits.length ? `<pre>${r.human_credits.map(esc).join("\n")}</pre>` : ""}
+      <form id="human" class="inline" ${reviewable ? "" : "hidden"}>
+        <label>Source<select name="source_type">${Object.entries(humanSources).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("")}</select></label>
+        <label>File<input type="file" name="file" required></label>
+        <label>Title<input name="sound_title" placeholder="Rain on the depot roof"></label>
+        <label>Author<input name="author" placeholder="you, the recordist or the vendor"></label>
+        <label>Licence<input name="license" placeholder="CC0, CC BY 4.0, royalty-free"></label>
+        <label>Source link<input name="source_url" placeholder="https://"></label>
+        <button type="submit">Add human layer</button>
+      </form>
+      ${reviewable && health.freesound_enabled ? `
+      <form id="fs-search" class="inline">
+        <label>Search Freesound (CC0 and CC BY only)<input name="q" placeholder="rain on window, cimbalom, train at night"></label>
+        <button type="submit" class="ghost">Search</button>
+      </form>
+      <ul id="fs-results" class="results"></ul>` : ""}
+      <p id="human-err" class="err" role="alert"></p>
+    </div>
 
     <div class="section">
       <h2>Audio and artwork</h2>
@@ -116,6 +152,7 @@ function render(r) {
       </form>
       <div class="actions">
         <button id="export" class="ghost" ${dis(reviewable && r.assets.some((a) => a.kind === "take"))}>Export master + delivery</button>
+        <button id="cover" class="ghost" ${dis(reviewable)}>Make Infrared cover</button>
       </div>
       <p id="file-err" class="err" role="alert"></p>
     </div>
@@ -127,6 +164,7 @@ function render(r) {
         <label>Description<textarea name="description" rows="3" maxlength="5000" ${dis(reviewable)}>${esc(r.description)}</textarea></label>
         <label>Credits<textarea name="credits" rows="2" maxlength="2000" ${dis(reviewable)} placeholder="Produced and curated by …; generated with …">${esc(r.credits)}</textarea></label>
         <label>Tags<input name="tags" value="${esc(r.tags)}" maxlength="500" ${dis(reviewable)}></label>
+        <label>Capture time (HH:MM, shown on the cover)<input name="capture_time" value="${esc(r.capture_time || "")}" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" ${dis(reviewable)}></label>
         <button type="submit" class="ghost" ${dis(reviewable)}>Save metadata</button>
       </form>
     </div>
@@ -149,6 +187,14 @@ function render(r) {
         <button id="comment" class="ghost">Add comment</button>
       </div>
       <p id="act-err" class="err" role="alert"></p>
+    </div>
+
+    <div class="section">
+      <h2>YouTube</h2>
+      ${r.uploads.length ? `<ul class="uploads">${r.uploads.map((u) => `<li class="${u.status}">${esc(u.kind)} · ${esc(u.status)} · goes public ${new Date(u.publish_at).toLocaleString()}${u.video_id ? ` · <a href="https://studio.youtube.com/video/${esc(u.video_id)}/edit" target="_blank" rel="noopener">open in Studio</a>` : ""}${u.error ? `<br>${esc(u.error)}` : ""}${u.status === "failed" ? ` <button class="ghost retry" data-id="${u.id}">Retry</button>` : ""}</li>`).join("")}</ul>` : `<p class="muted">${health.youtube?.enabled ? "Not scheduled yet." : "YouTube uploads are off (see docs/youtube.md)."}</p>`}
+      <div class="actions"><button id="yt" class="ghost" ${dis(r.status === "approved" && health.youtube?.enabled)}>Schedule private upload + Short</button></div>
+      <p class="muted">Uploads are private until their slot, with the AI disclosure always set.</p>
+      <p id="yt-err" class="err" role="alert"></p>
     </div>
 
     <div class="section">
@@ -187,9 +233,47 @@ function render(r) {
       await select(r.id);
     } catch (err) { $("#file-err").textContent = err.message; btn.disabled = false; btn.textContent = "Upload"; }
   };
+  $("#cover").onclick = (e) => {
+    e.target.disabled = true; e.target.textContent = "Rendering…";
+    act(() => api(`/api/releases/${r.id}/cover?actor=${encodeURIComponent(actor())}`, { method: "POST" }), "#file-err");
+  };
+  $("#yt").onclick = (e) => {
+    e.target.disabled = true; e.target.textContent = "Scheduling… (rendering and uploading)";
+    api(`/api/releases/${r.id}/youtube`, { method: "POST", body: JSON.stringify({ actor: actor() }) })
+      .then(() => select(r.id)).catch((err) => { $("#yt-err").textContent = err.message; });
+  };
+  document.querySelectorAll(".retry").forEach((b) => {
+    b.onclick = () => api(`/api/youtube/uploads/${b.dataset.id}/retry`, { method: "POST" })
+      .then(() => select(r.id)).catch((err) => { $("#yt-err").textContent = err.message; });
+  });
+  $("#human").onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    fd.set("kind", "human"); fd.set("actor", actor());
+    try { await api(`/api/releases/${r.id}/assets`, { method: "POST", body: fd }); await select(r.id); }
+    catch (err) { $("#human-err").textContent = err.message; }
+  };
+  if ($("#fs-search")) {
+    $("#fs-search").onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        const rows = await api(`/api/freesound/search?q=${encodeURIComponent(new FormData(e.target).get("q"))}`);
+        $("#fs-results").innerHTML = rows.map((x) => `<li class="${x.usable ? "" : "blocked"}">
+          <span><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.name)}</a> · ${esc(x.username)} · ${x.usable ? esc(x.license) : "not allowed (NC or Sampling+)"}</span>
+          ${x.usable ? `<button class="ghost" data-sound="${x.id}">Use</button>` : ""}</li>`).join("") || `<li class="muted">No results.</li>`;
+        document.querySelectorAll("#fs-results button").forEach((b) => {
+          b.onclick = () => act(async () => {
+            await post(`/api/releases/${r.id}/human/freesound`, { sound_id: Number(b.dataset.sound), actor: actor() });
+            return api(`/api/releases/${r.id}`);
+          }, "#human-err");
+        });
+      } catch (err) { $("#human-err").textContent = err.message; }
+    };
+  }
   $("#meta").onsubmit = (e) => {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(e.target));
+    if (!data.capture_time) delete data.capture_time;
     act(() => api(`/api/releases/${r.id}`, { method: "PATCH", body: JSON.stringify(data) }));
   };
   document.querySelectorAll(".checklist input").forEach((box) => {
@@ -237,5 +321,6 @@ $("#tpl-create").addEventListener("submit", async (e) => {
 
 (async () => {
   checklistItems = await api("/api/checklist");
-  loadHealth(); loadTemplates(); loadList();
+  humanSources = await api("/api/human/sources");
+  await loadHealth(); loadTemplates(); loadList();
 })();

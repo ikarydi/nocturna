@@ -110,7 +110,8 @@ def test_templates_crud_and_prompt_use(client):
     run = client.post(f"/api/releases/{rel['id']}/run").json()
     assert run["prompt"].startswith("pipe organ, long reverb")
     assert "outside the lane" in run["workflow_note"]
-    assert [t["name"] for t in client.get("/api/templates").json()] == ["Cathedral drone"]
+    names = [t["name"] for t in client.get("/api/templates").json()]
+    assert "Cathedral drone" in names and len(names) == 9  # plus the 8 starter lanes
 
 
 def test_checklist_and_comments_recorded(client):
@@ -178,6 +179,14 @@ def test_full_stage2_flow_to_package(client, tmp_path):
     assert client.get(f"/api/releases/{rid}/package").status_code == 409  # not approved yet
     client.put(f"/api/releases/{rid}/checklist", json={"items": ALL_DONE, "actor": "J"})
     r = client.post(f"/api/releases/{rid}/decision", json={"action": "approve", "actor": "J"})
+    assert r.status_code == 409 and "human layer" in r.json()["detail"]
+    rain = make_tone(tmp_path / "rain.wav", seconds=4, volume=0.1)
+    r = upload(client, rid, rain, kind="human", source_type="own_recording",
+               sound_title="Rain on the depot roof", actor="J")
+    assert r.status_code == 201, r.text
+    assert r.json()["provenance"]["license"] == "owned"
+    assert not any("differs from planned" in w for w in r.json()["qc_warnings"])
+    r = client.post(f"/api/releases/{rid}/decision", json={"action": "approve", "actor": "J"})
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "approved"
 
@@ -189,7 +198,11 @@ def test_full_stage2_flow_to_package(client, tmp_path):
     assert pkg.status_code == 200
     zf = zipfile.ZipFile(io.BytesIO(pkg.content))
     names = set(zf.namelist())
-    assert {"provenance.json", "metadata.json", "UPLOAD-CHECKLIST.txt"} <= names
+    assert {"provenance.json", "metadata.json", "UPLOAD-CHECKLIST.txt",
+            "PROVENANCE-CARD.txt"} <= names
+    card = zf.read("PROVENANCE-CARD.txt").decode()
+    assert "HUMAN LAYER" in card and "Field recording / played part: J" in card
+    assert "APPROVED      J" in card
     assert any(n.endswith("-master.flac") for n in names)
     assert any(n.endswith("-delivery.wav") for n in names)
     assert any(n.endswith("-artwork.png") for n in names)
@@ -197,7 +210,8 @@ def test_full_stage2_flow_to_package(client, tmp_path):
     assert record["release"]["status"] == "approved"
     assert all(v["done"] for v in record["checklist"].values())
     assert "altered or synthetic" in record["metadata"]["ai_disclosure"].lower()
-    assert [x["kind"] for x in record["assets"]] == ["take", "artwork", "master", "delivery"]
+    assert [x["kind"] for x in record["assets"]] == ["take", "artwork", "master", "delivery", "human"]
+    assert record["metadata"]["human_credits"] == ["Field recording / played part: J"]
     assert client.get(f"/api/assets/{master['id']}/file").status_code == 200
 
 

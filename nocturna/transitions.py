@@ -32,6 +32,8 @@ def approval_blockers(release: Release) -> list[str]:
     problems = []
     if release.latest_asset("master") is None or release.latest_asset("delivery") is None:
         problems.append("export a master and delivery file")
+    if release.latest_asset("human") is None:
+        problems.append("add a human layer (own recording or licensed human-made sound)")
     missing = release.checklist_missing()
     if missing:
         problems.append("checklist incomplete: " + ", ".join(missing))
